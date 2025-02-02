@@ -13,21 +13,21 @@
 #include <signal.h>
 
 #ifdef __APPLE__
-#include <ApplicationServices/ApplicationServices.h>
+    #include <ApplicationServices/ApplicationServices.h>
 #elif defined(_WIN32)
-#include <windows.h>
-#include <winsock2.h>
-#include <ws2tcpip.h>
-#pragma comment(lib, "ws2_32.lib")
+    #include <windows.h>
+    #include <winsock2.h>
+    #include <ws2tcpip.h>
+    #pragma comment(lib, "ws2_32.lib")
 #else
-#include <X11/Xlib.h>
-#include <X11/Xatom.h>
+    #include <X11/Xlib.h>
+    #include <X11/Xatom.h>
 #endif
 
 #define KEY_SIZE 32
 #define IV_SIZE 16
 #define BUFFER_SIZE 4096
-#define PORT 8443
+#define PORT 443
 #define MAX_RETRIES 5
 
 
@@ -411,7 +411,7 @@ int main(int argc, char *argv[]) {
         0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
         0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f
     };
-    
+
     if (strcmp(argv[1], "send") == 0) {
         #ifndef __APPLE__
         fprintf(stderr, "Sender must be running on macOS\n");
@@ -429,26 +429,26 @@ int main(int argc, char *argv[]) {
         char *cur_text = "";
         
         while (keep_running) {
-            
             char *clipboard_text = get_macos_clipboard();
             if (clipboard_text == NULL) {
                 fprintf(stderr, "Error getting clipboard content\n");
                 sleep(1);
                 continue;
             }
-            
-            if (cur_text != clipboard_text) {
-                EncryptedData encrypted = encrypt_data(key, clipboard_text);
-                send_encrypted_data(sock, &encrypted);
-                printf("Sent encrypted clipboard data\n");
-                cur_text = clipboard_text;
+            EncryptedData encrypted = encrypt_data(key, clipboard_text);
+
+            if (strcmp(clipboard_text, cur_text) != 0) {
+              send_encrypted_data(sock, &encrypted);
+              printf("Sent encrypted clipboard data\n");
+              cur_text = strdup(clipboard_text);
+              sleep(1);
             }
             
             free(clipboard_text);
             free(encrypted.data);
             sleep(1);
         }
-        
+        free(cur_text);
         close(sock);
         
     } else if (strcmp(argv[1], "receive") == 0) {
@@ -458,6 +458,18 @@ int main(int argc, char *argv[]) {
         struct sockaddr_in address;
         int addrlen = sizeof(address);
         char *current_text = "";
+
+        while (keep_running) {
+          int client_sock = accept(server_fd, (struct sockaddr*)&address, (socklen_t *)&addrlen);
+          if (client_sock < 0) {
+            if (!keep_running) break;
+            perror("Accept Failed");
+            continue;
+          }
+        }
+        char client_ip[INET_ADDRSTRLEN];
+        inet_ntop(AF_INET, &address.sin_addr, client_ip, INET_ADDRSTRLEN);
+        printf("Accept Connection from %s\n", client_ip);
         
         while (keep_running) {
             
@@ -524,7 +536,8 @@ int main(int argc, char *argv[]) {
                     if (!decrypted_text) continue;
                     if (current_text != decrypted_text) {
                       set_clipboard_content(decrypted_text);
-                      printf("[LOG] decrypted data %s\n",  decrypted_text);
+                      printf("---[DATA]-----\n\n");
+                      printf("%s\n",  decrypted_text);
                       current_text = decrypted_text;
                     }
                     free(decrypted_text);
