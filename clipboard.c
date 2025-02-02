@@ -426,6 +426,8 @@ int main(int argc, char *argv[]) {
         int sock = create_client_socket(argv[2]);
         printf("Connected to receiver at %s\n", argv[2]);
         
+        char *cur_text = "";
+        
         while (keep_running) {
             
             char *clipboard_text = get_macos_clipboard();
@@ -435,17 +437,15 @@ int main(int argc, char *argv[]) {
                 continue;
             }
             
-            
-            EncryptedData encrypted = encrypt_data(key, clipboard_text);
-            
-            
-            send_encrypted_data(sock, &encrypted);
-            printf("Sent encrypted clipboard data\n");
+            if (cur_text != clipboard_text) {
+                EncryptedData encrypted = encrypt_data(key, clipboard_text);
+                send_encrypted_data(sock, &encrypted);
+                printf("Sent encrypted clipboard data\n");
+                cur_text = clipboard_text;
+            }
             
             free(clipboard_text);
             free(encrypted.data);
-            
-            
             sleep(1);
         }
         
