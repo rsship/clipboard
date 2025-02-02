@@ -464,8 +464,6 @@ int main(int argc, char *argv[]) {
                               &sock_timeout, sizeof(sock_timeout));
                     
                     received_data = receive_encrypted_data(client_sock);
-                    printf("Connection closed by sender\n");
-
                     
                     // Decrypt the received data
                     char *decrypted_text = decrypt_data(key, &received_data);
@@ -478,7 +476,6 @@ int main(int argc, char *argv[]) {
                     free(received_data.data);
                 }
             }
-            
             close(client_sock);
             printf("Connection closed\n");
         }
