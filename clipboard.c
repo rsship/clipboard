@@ -155,33 +155,50 @@ void set_clipboard_content(const char* text) {
 EncryptedData encrypt_data(const unsigned char *key, const char *plaintext) {
     EncryptedData result = {0};
     EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
+    int outlen;
     
+    // Generate random IV
     if (RAND_bytes(result.iv, IV_SIZE) != 1) {
         handle_error("Error generating IV");
     }
     
-    if (EVP_EncryptInit_ex(ctx, EVP_aes_256_gcm(), NULL, key, result.iv) != 1) {
+    // Initialize encryption context with AES-256-GCM
+    if (EVP_EncryptInit_ex(ctx, EVP_aes_256_gcm(), NULL, NULL, NULL) != 1) {
         EVP_CIPHER_CTX_free(ctx);
-        handle_error("Error initializing encryption");
+        handle_error("Error initializing encryption context");
     }
     
+    // Set key length to 256 bits
+    if (EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_IVLEN, IV_SIZE, NULL) != 1) {
+        EVP_CIPHER_CTX_free(ctx);
+        handle_error("Error setting IV length");
+    }
+    
+    // Initialize key and IV
+    if (EVP_EncryptInit_ex(ctx, NULL, NULL, key, result.iv) != 1) {
+        EVP_CIPHER_CTX_free(ctx);
+        handle_error("Error setting key and IV");
+    }
+    
+    // Allocate memory for encrypted data
     int plaintext_len = strlen(plaintext);
     result.data = malloc(plaintext_len + EVP_MAX_BLOCK_LENGTH);
-    int len;
     
-    if (EVP_EncryptUpdate(ctx, result.data, &len, (unsigned char*)plaintext, plaintext_len) != 1) {
+    // Encrypt the data
+    if (EVP_EncryptUpdate(ctx, result.data, &outlen, (unsigned char*)plaintext, plaintext_len) != 1) {
         free(result.data);
         EVP_CIPHER_CTX_free(ctx);
-        handle_error("Error during encryption");
+        handle_error("Error encrypting data");
     }
-    result.length = len;
+    result.length = outlen;
     
-    if (EVP_EncryptFinal_ex(ctx, result.data + len, &len) != 1) {
+    // Finalize encryption
+    if (EVP_EncryptFinal_ex(ctx, result.data + outlen, &outlen) != 1) {
         free(result.data);
         EVP_CIPHER_CTX_free(ctx);
         handle_error("Error finalizing encryption");
     }
-    result.length += len;
+    result.length += outlen;
     
     // Get the tag
     if (EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_GET_TAG, 16, result.tag) != 1) {
@@ -198,22 +215,38 @@ EncryptedData encrypt_data(const unsigned char *key, const char *plaintext) {
 char* decrypt_data(const unsigned char *key, const EncryptedData *encrypted_data) {
     EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
     char *plaintext = malloc(encrypted_data->length + EVP_MAX_BLOCK_LENGTH);
-    int len;
+    int outlen;
     
-    if (EVP_DecryptInit_ex(ctx, EVP_aes_256_gcm(), NULL, key, encrypted_data->iv) != 1) {
+    // Initialize decryption context
+    if (EVP_DecryptInit_ex(ctx, EVP_aes_256_gcm(), NULL, NULL, NULL) != 1) {
         free(plaintext);
         EVP_CIPHER_CTX_free(ctx);
-        handle_error("Error initializing decryption");
+        handle_error("Error initializing decryption context");
     }
     
-    if (EVP_DecryptUpdate(ctx, (unsigned char*)plaintext, &len, 
+    // Set IV length
+    if (EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_IVLEN, IV_SIZE, NULL) != 1) {
+        free(plaintext);
+        EVP_CIPHER_CTX_free(ctx);
+        handle_error("Error setting IV length");
+    }
+    
+    // Initialize key and IV
+    if (EVP_DecryptInit_ex(ctx, NULL, NULL, key, encrypted_data->iv) != 1) {
+        free(plaintext);
+        EVP_CIPHER_CTX_free(ctx);
+        handle_error("Error setting key and IV");
+    }
+    
+    // Decrypt the data
+    if (EVP_DecryptUpdate(ctx, (unsigned char*)plaintext, &outlen, 
                          encrypted_data->data, encrypted_data->length) != 1) {
         free(plaintext);
         EVP_CIPHER_CTX_free(ctx);
-        handle_error("Error during decryption");
+        handle_error("Error decrypting data");
     }
     
-    int plaintext_len = len;
+    int plaintext_len = outlen;
     
     // Set expected tag value
     if (EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_TAG, 16, (void*)encrypted_data->tag) != 1) {
@@ -222,12 +255,13 @@ char* decrypt_data(const unsigned char *key, const EncryptedData *encrypted_data
         handle_error("Error setting authentication tag");
     }
     
-    if (EVP_DecryptFinal_ex(ctx, (unsigned char*)plaintext + len, &len) != 1) {
+    // Finalize decryption and verify tag
+    if (EVP_DecryptFinal_ex(ctx, (unsigned char*)plaintext + outlen, &outlen) != 1) {
         free(plaintext);
         EVP_CIPHER_CTX_free(ctx);
         handle_error("Error finalizing decryption: Authentication failed");
     }
-    plaintext_len += len;
+    plaintext_len += outlen;
     plaintext[plaintext_len] = '\0';
     
     EVP_CIPHER_CTX_free(ctx);
@@ -371,9 +405,13 @@ int main(int argc, char *argv[]) {
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);
     
-    // Generate or load encryption key (in practice, should be securely shared)
-    unsigned char key[KEY_SIZE];
-    RAND_bytes(key, KEY_SIZE);
+    // Use a fixed key for testing (in production, implement secure key exchange)
+    unsigned char key[KEY_SIZE] = {
+        0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+        0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
+        0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17,
+        0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f
+    };
     
     if (strcmp(argv[1], "send") == 0) {
         #ifndef __APPLE__
@@ -453,7 +491,7 @@ int main(int argc, char *argv[]) {
                 if (activity == 0) continue;  // Timeout
                 
                 if (FD_ISSET(client_sock, &readfds)) {
-                    // Receive encrypted data
+                    // Receive encrypted data with error handling
                     EncryptedData received_data;
                     
                     // Use non-blocking receive with timeout
@@ -463,7 +501,23 @@ int main(int argc, char *argv[]) {
                     setsockopt(client_sock, SOL_SOCKET, SO_RCVTIMEO, 
                               &sock_timeout, sizeof(sock_timeout));
                     
+                    // Attempt to receive data
+                    if (recv(client_sock, &received_data, sizeof(received_data), MSG_PEEK) <= 0) {
+                        if (errno == EWOULDBLOCK || errno == EAGAIN) {
+                            // Timeout occurred
+                            continue;
+                        } else {
+                            // Connection closed or error
+                            printf("Connection closed by sender\n");
+                            break;
+                        }
+                    }
+                    
                     received_data = receive_encrypted_data(client_sock);
+                    if (received_data.data == NULL) {
+                        printf("Error receiving data\n");
+                        continue;
+                    }
                     
                     // Decrypt the received data
                     char *decrypted_text = decrypt_data(key, &received_data);
@@ -476,6 +530,7 @@ int main(int argc, char *argv[]) {
                     free(received_data.data);
                 }
             }
+            
             close(client_sock);
             printf("Connection closed\n");
         }
