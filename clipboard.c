@@ -521,12 +521,10 @@ int main(int argc, char *argv[]) {
                     
                     // Decrypt the received data
                     char *decrypted_text = decrypt_data(key, &received_data);
-                    
-                    // Set the decrypted text to clipboard
-                    printf("[LOG] decripted data %s\n",  decrypted_text);
+                    if (!decrypted_text) continue;
                     set_clipboard_content(decrypted_text);
-                    printf("Updated clipboard with received data\n");
-                    
+                    printf("[LOG] decrypted data %s\n",  decrypted_text);
+                   
                     free(decrypted_text);
                     free(received_data.data);
                 }
