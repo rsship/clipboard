@@ -12,7 +12,6 @@
 #include <errno.h>
 #include <signal.h>
 
-// Platform-specific includes
 #ifdef __APPLE__
 #include <ApplicationServices/ApplicationServices.h>
 #elif defined(_WIN32)
@@ -31,26 +30,26 @@
 #define PORT 8443
 #define MAX_RETRIES 5
 
-// Structure to hold encrypted data
+
 typedef struct {
     unsigned char *data;
     int length;
     unsigned char iv[IV_SIZE];
-    unsigned char tag[16];  // GCM authentication tag
+    unsigned char tag[16];  
 } EncryptedData;
 
-// Network transfer protocol structure
+
 typedef struct {
-    uint32_t magic;         // Magic number for protocol verification
-    uint32_t data_length;   // Length of encrypted data
-    unsigned char iv[16];   // Initialization vector
-    unsigned char tag[16];  // Authentication tag
-    unsigned char data[];   // Variable-length encrypted data
+    uint32_t magic;         
+    uint32_t data_length;   
+    unsigned char iv[16];   
+    unsigned char tag[16];  
+    unsigned char data[];   
 } __attribute__((packed)) TransferProtocol;
 
-#define PROTOCOL_MAGIC 0x5345434C // "SECL" in ASCII
+#define PROTOCOL_MAGIC 0x5345434C 
 
-// Error handling function
+
 void handle_error(const char* message) {
     fprintf(stderr, "Error: %s\n", message);
     fprintf(stderr, "System error: %s\n", strerror(errno));
@@ -58,7 +57,7 @@ void handle_error(const char* message) {
 }
 
 #ifdef __APPLE__
-// macOS-specific clipboard function
+
 char* get_macos_clipboard() {
     PasteboardRef pasteboard;
     OSStatus err = PasteboardCreate(kPasteboardClipboard, &pasteboard);
@@ -102,7 +101,7 @@ char* get_macos_clipboard() {
 }
 #endif
 
-// Cross-platform clipboard setter for receiver
+
 void set_clipboard_content(const char* text) {
 #ifdef _WIN32
     if (!OpenClipboard(NULL))
@@ -151,40 +150,40 @@ void set_clipboard_content(const char* text) {
 #endif
 }
 
-// Enhanced encryption function with authentication
+
 EncryptedData encrypt_data(const unsigned char *key, const char *plaintext) {
     EncryptedData result = {0};
     EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
     int outlen;
     
-    // Generate random IV
+    
     if (RAND_bytes(result.iv, IV_SIZE) != 1) {
         handle_error("Error generating IV");
     }
     
-    // Initialize encryption context with AES-256-GCM
+    
     if (EVP_EncryptInit_ex(ctx, EVP_aes_256_gcm(), NULL, NULL, NULL) != 1) {
         EVP_CIPHER_CTX_free(ctx);
         handle_error("Error initializing encryption context");
     }
     
-    // Set key length to 256 bits
+    
     if (EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_IVLEN, IV_SIZE, NULL) != 1) {
         EVP_CIPHER_CTX_free(ctx);
         handle_error("Error setting IV length");
     }
     
-    // Initialize key and IV
+    
     if (EVP_EncryptInit_ex(ctx, NULL, NULL, key, result.iv) != 1) {
         EVP_CIPHER_CTX_free(ctx);
         handle_error("Error setting key and IV");
     }
     
-    // Allocate memory for encrypted data
+    
     int plaintext_len = strlen(plaintext);
     result.data = malloc(plaintext_len + EVP_MAX_BLOCK_LENGTH);
     
-    // Encrypt the data
+    
     if (EVP_EncryptUpdate(ctx, result.data, &outlen, (unsigned char*)plaintext, plaintext_len) != 1) {
         free(result.data);
         EVP_CIPHER_CTX_free(ctx);
@@ -192,7 +191,7 @@ EncryptedData encrypt_data(const unsigned char *key, const char *plaintext) {
     }
     result.length = outlen;
     
-    // Finalize encryption
+    
     if (EVP_EncryptFinal_ex(ctx, result.data + outlen, &outlen) != 1) {
         free(result.data);
         EVP_CIPHER_CTX_free(ctx);
@@ -200,7 +199,7 @@ EncryptedData encrypt_data(const unsigned char *key, const char *plaintext) {
     }
     result.length += outlen;
     
-    // Get the tag
+    
     if (EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_GET_TAG, 16, result.tag) != 1) {
         free(result.data);
         EVP_CIPHER_CTX_free(ctx);
@@ -211,34 +210,34 @@ EncryptedData encrypt_data(const unsigned char *key, const char *plaintext) {
     return result;
 }
 
-// Enhanced decryption function with authentication
+
 char* decrypt_data(const unsigned char *key, const EncryptedData *encrypted_data) {
     EVP_CIPHER_CTX *ctx = EVP_CIPHER_CTX_new();
     char *plaintext = malloc(encrypted_data->length + EVP_MAX_BLOCK_LENGTH);
     int outlen;
     
-    // Initialize decryption context
+    
     if (EVP_DecryptInit_ex(ctx, EVP_aes_256_gcm(), NULL, NULL, NULL) != 1) {
         free(plaintext);
         EVP_CIPHER_CTX_free(ctx);
         handle_error("Error initializing decryption context");
     }
     
-    // Set IV length
+    
     if (EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_IVLEN, IV_SIZE, NULL) != 1) {
         free(plaintext);
         EVP_CIPHER_CTX_free(ctx);
         handle_error("Error setting IV length");
     }
     
-    // Initialize key and IV
+    
     if (EVP_DecryptInit_ex(ctx, NULL, NULL, key, encrypted_data->iv) != 1) {
         free(plaintext);
         EVP_CIPHER_CTX_free(ctx);
         handle_error("Error setting key and IV");
     }
     
-    // Decrypt the data
+    
     if (EVP_DecryptUpdate(ctx, (unsigned char*)plaintext, &outlen, 
                          encrypted_data->data, encrypted_data->length) != 1) {
         free(plaintext);
@@ -248,14 +247,14 @@ char* decrypt_data(const unsigned char *key, const EncryptedData *encrypted_data
     
     int plaintext_len = outlen;
     
-    // Set expected tag value
+    
     if (EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_TAG, 16, (void*)encrypted_data->tag) != 1) {
         free(plaintext);
         EVP_CIPHER_CTX_free(ctx);
         handle_error("Error setting authentication tag");
     }
     
-    // Finalize decryption and verify tag
+    
     if (EVP_DecryptFinal_ex(ctx, (unsigned char*)plaintext + outlen, &outlen) != 1) {
         free(plaintext);
         EVP_CIPHER_CTX_free(ctx);
@@ -268,7 +267,7 @@ char* decrypt_data(const unsigned char *key, const EncryptedData *encrypted_data
     return plaintext;
 }
 
-// Network functions
+
 int create_server_socket() {
     int server_fd;
     struct sockaddr_in address;
@@ -320,7 +319,7 @@ int create_client_socket(const char* server_ip) {
     return sock;
 }
 
-// Send encrypted data over network
+
 void send_encrypted_data(int sock, const EncryptedData *data) {
     size_t total_size = sizeof(TransferProtocol) + data->length;
     TransferProtocol *protocol = malloc(total_size);
@@ -345,12 +344,12 @@ void send_encrypted_data(int sock, const EncryptedData *data) {
     free(protocol);
 }
 
-// Receive encrypted data from network
+
 EncryptedData receive_encrypted_data(int sock) {
     EncryptedData result = {0};
     TransferProtocol header;
     
-    // Receive header first
+    
     size_t bytes_received = 0;
     while (bytes_received < sizeof(TransferProtocol)) {
         ssize_t res = recv(sock, ((char*)&header) + bytes_received, 
@@ -365,13 +364,13 @@ EncryptedData receive_encrypted_data(int sock) {
         handle_error("Invalid protocol magic number");
     }
     
-    // Get the data length and allocate buffer
+    
     result.length = ntohl(header.data_length);
     result.data = malloc(result.length);
     memcpy(result.iv, header.iv, 16);
     memcpy(result.tag, header.tag, 16);
     
-    // Receive encrypted data
+    
     bytes_received = 0;
     while (bytes_received < result.length) {
         ssize_t res = recv(sock, result.data + bytes_received, 
@@ -386,7 +385,7 @@ EncryptedData receive_encrypted_data(int sock) {
     return result;
 }
 
-// Signal handler for graceful shutdown
+
 volatile sig_atomic_t keep_running = 1;
 
 void signal_handler(int signum) {
@@ -401,11 +400,11 @@ int main(int argc, char *argv[]) {
         return 1;
     }
     
-    // Setup signal handler
+    
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);
     
-    // Use a fixed key for testing (in production, implement secure key exchange)
+    
     unsigned char key[KEY_SIZE] = {
         0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
         0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
@@ -428,7 +427,7 @@ int main(int argc, char *argv[]) {
         printf("Connected to receiver at %s\n", argv[2]);
         
         while (keep_running) {
-            // Get clipboard content using macOS-specific function
+            
             char *clipboard_text = get_macos_clipboard();
             if (clipboard_text == NULL) {
                 fprintf(stderr, "Error getting clipboard content\n");
@@ -436,17 +435,17 @@ int main(int argc, char *argv[]) {
                 continue;
             }
             
-            // Encrypt the clipboard content
+            
             EncryptedData encrypted = encrypt_data(key, clipboard_text);
             
-            // Send encrypted data
+            
             send_encrypted_data(sock, &encrypted);
             printf("Sent encrypted clipboard data\n");
             
             free(clipboard_text);
             free(encrypted.data);
             
-            // Wait before checking clipboard again
+            
             sleep(1);
         }
         
@@ -458,13 +457,14 @@ int main(int argc, char *argv[]) {
         
         struct sockaddr_in address;
         int addrlen = sizeof(address);
+        char *current_text = "";
         
         while (keep_running) {
-            // Accept incoming connection
+            
             int client_sock = accept(server_fd, (struct sockaddr *)&address, 
                                    (socklen_t*)&addrlen);
             if (client_sock < 0) {
-                if (!keep_running) break;  // Check if we're shutting down
+                if (!keep_running) break;  
                 handle_error("Accept failed");
             }
             
@@ -483,31 +483,31 @@ int main(int argc, char *argv[]) {
                 int activity = select(client_sock + 1, &readfds, NULL, NULL, &tv);
                 
                 if (activity < 0) {
-                    if (errno == EINTR) continue;  // Interrupted by signal
+                    if (errno == EINTR) continue;  
                     perror("Select error");
                     break;
                 }
                 
-                if (activity == 0) continue;  // Timeout
+                if (activity == 0) continue;  
                 
                 if (FD_ISSET(client_sock, &readfds)) {
-                    // Receive encrypted data with error handling
+                    
                     EncryptedData received_data;
                     
-                    // Use non-blocking receive with timeout
+                    
                     struct timeval sock_timeout;
                     sock_timeout.tv_sec = 5;
                     sock_timeout.tv_usec = 0;
                     setsockopt(client_sock, SOL_SOCKET, SO_RCVTIMEO, 
                               &sock_timeout, sizeof(sock_timeout));
                     
-                    // Attempt to receive data
+                    
                     if (recv(client_sock, &received_data, sizeof(received_data), MSG_PEEK) <= 0) {
                         if (errno == EWOULDBLOCK || errno == EAGAIN) {
-                            // Timeout occurred
+                            
                             continue;
                         } else {
-                            // Connection closed or error
+                            
                             printf("Connection closed by sender\n");
                             break;
                         }
@@ -519,12 +519,14 @@ int main(int argc, char *argv[]) {
                         continue;
                     }
                     
-                    // Decrypt the received data
+                    
                     char *decrypted_text = decrypt_data(key, &received_data);
                     if (!decrypted_text) continue;
-                    set_clipboard_content(decrypted_text);
-                    printf("[LOG] decrypted data %s\n",  decrypted_text);
-                   
+                    if (current_text != decrypted_text) {
+                      set_clipboard_content(decrypted_text);
+                      printf("[LOG] decrypted data %s\n",  decrypted_text);
+                      current_text = decrypted_text;
+                    }
                     free(decrypted_text);
                     free(received_data.data);
                 }
