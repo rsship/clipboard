@@ -458,18 +458,6 @@ int main(int argc, char *argv[]) {
         struct sockaddr_in address;
         int addrlen = sizeof(address);
         char *current_text = "";
-
-        while (keep_running) {
-          int client_sock = accept(server_fd, (struct sockaddr*)&address, (socklen_t *)&addrlen);
-          if (client_sock < 0) {
-            if (!keep_running) break;
-            perror("Accept Failed");
-            continue;
-          }
-        }
-        char client_ip[INET_ADDRSTRLEN];
-        inet_ntop(AF_INET, &address.sin_addr, client_ip, INET_ADDRSTRLEN);
-        printf("Accept Connection from %s\n", client_ip);
         
         while (keep_running) {
             
